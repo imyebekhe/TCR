@@ -1,4 +1,4 @@
-name: "Let's TVC!"
+name: "TCR!"
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  tvc-full:
+  tcr-full:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -37,9 +37,9 @@ jobs:
           git commit -m "🚀 Servers Updated - $(TZ='Asia/Tehran' date '+%Y-%m-%d %H:%M:%S')"
           git push
           
-  tvc-lite:
+  tcr-lite:
     runs-on: ubuntu-latest
-    needs: tvc-full
+    needs: tcr-full
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
