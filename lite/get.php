@@ -2,39 +2,39 @@
 // Enable error reporting
 ini_set("display_errors", 1);
 ini_set("display_startup_errors", 1);
-error_reporting(E_ERROR | E_PARSE);
+error_reporting(E_ALL);
 
 // Include the functions file
 require "functions.php";
 
 // Fetch the JSON data from the API and decode it into an associative array
-$sourcesArray = json_decode(
-    file_get_contents("channels.json"),
-    true
-);
+$sourcesArray = json_decode(file_get_contents("channels.json"), true);
+if (json_last_error() !== JSON_ERROR_NONE) {
+    die("Error decoding JSON: " . json_last_error_msg());
+}
 
 // Count the total number of sources
 $totalSources = count($sourcesArray);
-$tempCounter = 1;
-
-// Initialize an empty array to store the configurations
 $configsList = [];
+
 echo "Fetching Configs\n";
+$tempCounter = 1;
 
 // Loop through each source in the sources array
 foreach ($sourcesArray as $source => $types) {
-    // Calculate the percentage complete
-    $percentage = ($tempCounter / $totalSources) * 100;
 
-    // Print the progress bar
-    echo "\rProgress: [";
-    echo str_repeat("=", $tempCounter);
-    echo str_repeat(" ", $totalSources - $tempCounter);
-    echo "] $percentage%";
+    // Calculate and print progress
+    $percentage = ($tempCounter / $totalSources) * 100;
+    echo "\rProgress: [" . str_repeat("=", $tempCounter) . str_repeat(" ", $totalSources - $tempCounter) . "] $percentage%";
     $tempCounter++;
 
     // Fetch the data from the source
-    $tempData = file_get_contents("https://t.me/s/" . $source);
+    $tempData = file_get_contents("https://t.me/s/$source");
+    if ($tempData === false) {
+        echo "\nFailed to fetch data for source: $source\n";
+        continue;
+    }
+
     $type = implode("|", $types);
     $tempExtract = extractLinksByType($tempData, $type);
     if (!is_null($tempExtract)) {
@@ -42,7 +42,7 @@ foreach ($sourcesArray as $source => $types) {
     }
 }
 
-// Initialize an empty array to store the final output
+// Initialize variables for processing
 $finalOutput = [];
 $locationBased = [];
 $needleArray = ["amp%3B"];
@@ -68,84 +68,59 @@ $configsIp = [
 
 echo "\nProcessing Configs\n";
 $totalSources = count($configsList);
-$tempSource = 1;
 
 // Loop through each source in the configs list
 foreach ($configsList as $source => $configs) {
     $totalConfigs = count($configs);
-    $tempCounter = 1;
-    echo "\n" . strval($tempSource) . "/" . strval($totalSources) . "\n";
+
+    echo "\n$tempSource/$totalSources\n";
 
     // Loop through each config in the configs array
-    $limitKey = count($configs) - 2;
+    $limitKey = max(0, count($configs) - 2);
+    $tempCounter = 1;
     foreach (array_reverse($configs) as $key => $config) {
-        // Calculate the percentage complete
-        $percentage = ($tempCounter / $totalConfigs) * 100;
 
-        // Print the progress bar
-        echo "\rProgress: [";
-        echo str_repeat("=", $tempCounter);
-        echo str_repeat(" ", $totalConfigs - $tempCounter);
-        echo "] $percentage%";
+        // Calculate and print progress
+        $percentage = ($tempCounter / $totalConfigs) * 100;
+        echo "\rProgress: [" . str_repeat("=", $tempCounter) . str_repeat(" ", $totalConfigs - $tempCounter) . "] $percentage%";
         $tempCounter++;
 
-        // If the config is valid and the key is less than or equal to 1
+        // If the config is valid and within the limit
         if (is_valid($config) && $key >= $limitKey) {
             $type = detect_type($config);
             $configHash = $configsHash[$type];
             $configIp = $configsIp[$type];
             $decodedConfig = configParse(explode("<", $config)[0]);
-            $configLocation =
-                ip_info($decodedConfig[$configIp])->country ?? "XX";
-            $configFlag =
-                $configLocation === "XX" ? "❔" : ($configLocation === "CF" ? "🚩" : getFlags($configLocation));
-            $isEncrypted = 
-                isEncrypted($config) ? "🟢" : "🔴";
-            $decodedConfig[$configHash] =
-                $configFlag .
-                $configLocation .
-                " | " . 
-                $isEncrypted .
-                " | " .
-                $type .
-                " | @" .
-                $source .
-                " | " .
-                strval($key);
+            $configLocation = ip_info($decodedConfig[$configIp])->country ?? "XX";
+            $configFlag = ($configLocation === "XX") ? "❔" : (($configLocation === "CF") ? "🚩" : getFlags($configLocation));
+            $isEncrypted = isEncrypted($config) ? "🟢" : "🔴";
+
+            $decodedConfig[$configHash] = $configFlag . $configLocation . " | " . $isEncrypted . " | " . $type . " | @" . $source . " | " . strval($key);
             $encodedConfig = reparseConfig($decodedConfig, $type);
+
             if (substr($encodedConfig, 0, 10) !== "ss://Og==@") {
-                $finalOutput[] = str_replace(
-                    $needleArray,
-                    $replaceArray,
-                    $encodedConfig
-                );
-                $locationBased[$configLocation][] = str_replace(
-                    $needleArray,
-                    $replaceArray,
-                    $encodedConfig
-                );
+                $cleanedConfig = str_replace($needleArray, $replaceArray, $encodedConfig);
+                $finalOutput[] = $cleanedConfig;
+                $locationBased[$configLocation][] = $cleanedConfig;
             }
         }
     }
     $tempSource++;
 }
+
+// Clean up and prepare output directories
 deleteFolder("subscriptions/location/normal");
 deleteFolder("subscriptions/location/base64");
-mkdir("subscriptions/location/normal");
-mkdir("subscriptions/location/base64");
+mkdir("subscriptions/location/normal", 0777, true);
+mkdir("subscriptions/location/base64", 0777, true);
 
 // Loop through each location in the location-based array
 foreach ($locationBased as $location => $configs) {
     $tempConfig = urldecode(implode("\n", $configs));
     $base64TempConfig = base64_encode($tempConfig);
-    file_put_contents(
-        "subscriptions/location/normal/" . $location,
-        $tempConfig
-    );
-    file_put_contents(
-        "subscriptions/location/base64/" . $location,
-        $base64TempConfig
-    );
+
+    file_put_contents("subscriptions/location/normal/$location", $tempConfig);
+    file_put_contents("subscriptions/location/base64/$location", $base64TempConfig);
 }
 
 // Write the final output to a file
