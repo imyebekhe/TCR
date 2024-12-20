@@ -44,7 +44,7 @@ foreach ($sortArray as $type => $configs) {
     }
 
     // Join the configurations into a string and add a header
-    $tempConfigs = hiddifyHeader("TCR | " . strtoupper($type)) . implode("\n", $configs);
+    $tempConfigs = hiddifyHeader("TVC | " . strtoupper($type)) . implode("\n", $configs);
 
     // Encode the configurations to base64
     $base64TempConfigs = base64_encode($tempConfigs);
