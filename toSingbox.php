@@ -2,37 +2,37 @@
 // Enable error reporting
 ini_set("display_errors", 1);
 ini_set("display_startup_errors", 1);
-error_reporting(E_ERROR | E_PARSE);
+error_reporting(E_ALL);
 
 // Include the functions file
 require "functions.php";
 
+// Function to process WebSocket path
 function processWsPath($input)
 {
     if (strpos($input, "/") === 0) {
         $input = substr($input, 1);
     }
-    $max_early_data = 0;
-    if (strpos($input, "?ed=2048") !== false) {
-        $input = str_replace("?ed=2048", "", $input);
-        $max_early_data = 2048;
-    }
-    $output = [
+    $max_early_data = strpos($input, "?ed=2048") !== false ? 2048 : 0;
+    $input = str_replace("?ed=2048", "", $input);
+
+    return [
         "path" => "/" . $input,
         "max_early_data" => $max_early_data,
     ];
-
-    return $output;
 }
 
-function setTls ($decodedConfig, $configType) {
+// Function to set TLS configuration
+function setTls($decodedConfig, $configType)
+{
     $serverNameTypes = [
         "vmess" => $decodedConfig["sni"] ?? $decodedConfig["add"],
         "vless" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
         "trojan" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
         "tuic" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
-        "hy2" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"]
+        "hy2" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
     ];
+
     return [
         "enabled" => true,
         "server_name" => $serverNameTypes[$configType],
@@ -45,21 +45,25 @@ function setTls ($decodedConfig, $configType) {
     ];
 }
 
-function setTransport ($decodedConfig, $configType, $transportType) {
+// Function to set transport configuration
+function setTransport($decodedConfig, $configType, $transportType)
+{
     $serverNameTypes = [
         "vmess" => $decodedConfig["sni"] ?? $decodedConfig["add"],
         "vless" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
         "trojan" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
         "tuic" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
-        "hy2" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"]
+        "hy2" => $decodedConfig["params"]["sni"] ?? $decodedConfig["hostname"],
     ];
+
     $pathTypes = [
-        "vmess" => processWsPath($decodedConfig["path"])['path'],
+        "vmess" => processWsPath($decodedConfig["path"])["path"],
         "vless" => processWsPath($decodedConfig["params"]["path"])["path"],
         "trojan" => processWsPath($decodedConfig["params"]["path"])["path"],
         "tuic" => processWsPath($decodedConfig["params"]["path"])["path"],
-        "hy2" => processWsPath($decodedConfig["params"]["path"])["path"]
+        "hy2" => processWsPath($decodedConfig["params"]["path"])["path"],
     ];
+
     $servicenameTypes = [
         "vmess" => $decodedConfig["path"],
         "vless" => $decodedConfig["params"]["serviceName"] ?? "",
@@ -67,12 +71,13 @@ function setTransport ($decodedConfig, $configType, $transportType) {
         "tuic" => $decodedConfig["params"]["serviceName"] ?? "",
         "hy2" => $decodedConfig["params"]["serviceName"] ?? "",
     ];
+
     $transportTypes = [
         "ws" => [
             "type" => "ws",
             "path" => $pathTypes[$configType],
             "headers" => [
-                "Host" => $serverNameTypes[$configType]
+                "Host" => $serverNameTypes[$configType],
             ],
         ],
         "grpc" => [
@@ -84,24 +89,27 @@ function setTransport ($decodedConfig, $configType, $transportType) {
         ],
         "http" => [
             "type" => "http",
-            "host" => [
-                $serverNameTypes[$configType]
-            ],
+            "host" => [$serverNameTypes[$configType]],
             "path" => $pathTypes[$configType],
-        ]
+        ],
     ];
+
     return $transportTypes[$transportType];
 }
 
-function setReality ($decodedConfig) {
+// Function to set Reality configuration
+function setReality($decodedConfig)
+{
     return [
         "enabled" => true,
-        "public_key" => $decodedConfig["params"]["pbk"] ?? '',
-        "short_id" => $decodedConfig["params"]["sid"] ?? '',
+        "public_key" => $decodedConfig["params"]["pbk"] ?? "",
+        "short_id" => $decodedConfig["params"]["sid"] ?? "",
     ];
 }
 
-function vmessToSingbox ($input) {
+// Function to convert VMess to Sing-box format
+function vmessToSingbox($input)
+{
     $decodedConfig = configParse($input);
 
     $configResult = [
@@ -121,32 +129,37 @@ function vmessToSingbox ($input) {
             "max_streams" => 32,
         ],
     ];
-    if (($decodedConfig["port"] === "443" || $decodedConfig["tls"] === "tls"))
-    {
+
+    if ($decodedConfig["port"] === "443" || $decodedConfig["tls"] === "tls") {
         $configResult["tls"] = setTls($decodedConfig, "vmess");
     }
-    if (in_array($decodedConfig["net"], ["ws", "grpc", "http"])) $configResult["transport"] = setTransport($decodedConfig, "vmess", $decodedConfig["net"]);
+
+    if (in_array($decodedConfig["net"], ["ws", "grpc", "http"])) {
+        $configResult["transport"] = setTransport($decodedConfig, "vmess", $decodedConfig["net"]);
+    }
+
     if (
         $decodedConfig["net"] === "grpc" &&
-        ($configResult["transport"]["service_name"] === "" ||
-            is_null($configResult["transport"]["service_name"]))
+        ($configResult["transport"]["service_name"] === "" || is_null($configResult["transport"]["service_name"]))
     ) {
         return null;
     }
+
     return $configResult;
 }
 
-function vlessToSingbox ($input) {
+// Function to convert VLESS to Sing-box format
+function vlessToSingbox($input)
+{
     $decodedConfig = configParse($input);
+
     $configResult = [
         "tag" => urldecode($decodedConfig["hash"]),
         "type" => "vless",
         "server" => $decodedConfig["hostname"],
         "server_port" => intval($decodedConfig["port"]),
         "uuid" => $decodedConfig["username"],
-        "flow" => !is_null($decodedConfig["params"]["flow"])
-            ? "xtls-rprx-vision"
-            : "",
+        "flow" => !is_null($decodedConfig["params"]["flow"]) ? "xtls-rprx-vision" : "",
         "packet_encoding" => "xudp",
         "multiplex" => [
             "enabled" => false,
@@ -154,43 +167,44 @@ function vlessToSingbox ($input) {
             "max_streams" => 32,
         ],
     ];
+
     if (
         $decodedConfig["port"] === "443" ||
         $decodedConfig["params"]["security"] === "tls" ||
         $decodedConfig["params"]["security"] === "reality"
-    )
-    {
+    ) {
         $configResult["tls"] = setTls($decodedConfig, "vless");
     }
 
-    if (
-        $decodedConfig["params"]["security"] === "reality" ||
-        isset($decodedConfig["params"]["pbk"])
-    ) 
-    {
+    if ($decodedConfig["params"]["security"] === "reality" || isset($decodedConfig["params"]["pbk"])) {
         $configResult["tls"]["reality"] = setReality($decodedConfig);
         $configResult["tls"]["utls"]["fingerprint"] = $decodedConfig["params"]["fp"];
-        $configResult['flow'] = "xtls-rprx-vision";
-        if (
-            is_null($decodedConfig["params"]["pbk"]) or
-            $decodedConfig["params"]["pbk"] === ""
-        ) {
+        $configResult["flow"] = "xtls-rprx-vision";
+
+        if (is_null($decodedConfig["params"]["pbk"]) || $decodedConfig["params"]["pbk"] === "") {
             return null;
         }
     }
-    if (in_array($decodedConfig["params"]["type"], ["ws", "grpc", "http"])) $configResult["transport"] = setTransport($decodedConfig, "vless", $decodedConfig["params"]["type"]);
+
+    if (in_array($decodedConfig["params"]["type"], ["ws", "grpc", "http"])) {
+        $configResult["transport"] = setTransport($decodedConfig, "vless", $decodedConfig["params"]["type"]);
+    }
+
     if (
         $decodedConfig["params"]["type"] === "grpc" &&
-        ($configResult["transport"]["service_name"] === "" ||
-            is_null($configResult["transport"]["service_name"]))
+        ($configResult["transport"]["service_name"] === "" || is_null($configResult["transport"]["service_name"]))
     ) {
         return null;
     }
+
     return $configResult;
 }
 
-function trojanToSingbox ($input) {
+// Function to convert Trojan to Sing-box format
+function trojanToSingbox($input)
+{
     $decodedConfig = configParse($input);
+
     $configResult = [
         "tag" => urldecode($decodedConfig["hash"]),
         "type" => "trojan",
@@ -203,35 +217,36 @@ function trojanToSingbox ($input) {
             "max_streams" => 32,
         ],
     ];
-    if (
-        $decodedConfig["port"] === "443" ||
-        $decodedConfig["params"]["security"] === "tls"
-    ) {
+
+    if ($decodedConfig["port"] === "443" || $decodedConfig["params"]["security"] === "tls") {
         $configResult["tls"] = setTls($decodedConfig, "trojan");
     }
-    if (in_array($decodedConfig["params"]["type"], ["ws", "grpc", "http"])) $configResult["transport"] = setTransport($decodedConfig, "trojan", $decodedConfig["params"]["type"]);
+
+    if (in_array($decodedConfig["params"]["type"], ["ws", "grpc", "http"])) {
+        $configResult["transport"] = setTransport($decodedConfig, "trojan", $decodedConfig["params"]["type"]);
+    }
+
     if (
         $decodedConfig["params"]["type"] === "grpc" &&
-        ($configResult["transport"]["service_name"] === "" ||
-            is_null($configResult["transport"]["service_name"]))
+        ($configResult["transport"]["service_name"] === "" || is_null($configResult["transport"]["service_name"]))
     ) {
         return null;
     }
+
     return $configResult;
 }
 
-function ssToSingbox ($input) {
+// Function to convert Shadowsocks to Sing-box format
+function ssToSingbox($input)
+{
     $decodedConfig = configParse($input);
-    $encryptionMethodes = [
-        "chacha20-ietf-poly1305",
-        "aes-256-gcm",
-        "2022-blake3-aes-256-gcm"
-    ];
-    if (!in_array($decodedConfig["encryption_method"], $encryptionMethodes)) {
+
+    $encryptionMethods = ["chacha20-ietf-poly1305", "aes-256-gcm", "2022-blake3-aes-256-gcm"];
+    if (!in_array($decodedConfig["encryption_method"], $encryptionMethods)) {
         return null;
     }
-    
-    $configResult = [
+
+    return [
         "tag" => $decodedConfig["name"],
         "type" => "shadowsocks",
         "server" => $decodedConfig["server_address"],
@@ -241,11 +256,13 @@ function ssToSingbox ($input) {
         "plugin" => "",
         "plugin_opts" => "",
     ];
-    return $configResult;
 }
 
-function tuicToSingbox ($input) {
+// Function to convert TUIC to Sing-box format
+function tuicToSingbox($input)
+{
     $decodedConfig = configParse($input);
+
     $configResult = [
         "tag" => urldecode($decodedConfig["hash"]),
         "type" => "tuic",
@@ -263,29 +280,23 @@ function tuicToSingbox ($input) {
     $configResult["tls"] = [
         "enabled" => true,
         "disable_sni" => isset($decodedConfig["params"]["sni"]) ? false : true,
-        "server_name" => isset($decodedConfig["params"]["sni"])
-            ? $decodedConfig["params"]["sni"]
-            : "",
-        "insecure" =>
-            isset($decodedConfig["params"]["allow_insecure"]) &&
-            intval($decodedConfig["params"]["allow_insecure"]) === 1
-                ? true
-                : false,
+        "server_name" => isset($decodedConfig["params"]["sni"]) ? $decodedConfig["params"]["sni"] : "",
+        "insecure" => isset($decodedConfig["params"]["allow_insecure"]) && intval($decodedConfig["params"]["allow_insecure"]) === 1,
         "alpn" => ["h3", "spdy/3.1"],
     ];
-    if (
-        !isset($decodedConfig["params"]["alpn"]) ||
-        is_null($decodedConfig["params"]["alpn"]) ||
-        $decodedConfig["params"]["alpn"] === ""
-    ) {
+
+    if (!isset($decodedConfig["params"]["alpn"]) || is_null($decodedConfig["params"]["alpn"]) || $decodedConfig["params"]["alpn"] === "") {
         unset($configResult["tls"]["alpn"]);
     }
 
     return $configResult;
 }
 
-function hy2ToSingbox ($input) {
+// Function to convert Hysteria2 to Sing-box format
+function hy2ToSingbox($input)
+{
     $decodedConfig = configParse($input);
+
     $configResult = [
         "tag" => urldecode($decodedConfig["hash"]),
         "type" => "hysteria2",
@@ -302,27 +313,24 @@ function hy2ToSingbox ($input) {
         "password" => $decodedConfig["params"]["obfs-password"],
     ];
 
-    if (is_null($configResult["obfs"]["password"]) || empty($configResult["obfs"]["password"])) return null;
+    if (is_null($configResult["obfs"]["password"]) || empty($configResult["obfs"]["password"])) {
+        return null;
+    }
 
     $configResult["tls"] = [
         "enabled" => true,
         "disable_sni" => isset($decodedConfig["params"]["sni"]) ? false : true,
-        "server_name" => isset($decodedConfig["params"]["sni"])
-            ? $decodedConfig["params"]["sni"]
-            : "",
-        "insecure" =>
-            isset($decodedConfig["params"]["insecure"]) &&
-            intval($decodedConfig["params"]["insecure"]) === 1
-                ? true
-                : false,
+        "server_name" => isset($decodedConfig["params"]["sni"]) ? $decodedConfig["params"]["sni"] : "",
+        "insecure" => isset($decodedConfig["params"]["insecure"]) && intval($decodedConfig["params"]["insecure"]) === 1,
         "alpn" => ["h3"],
     ];
 
     return $configResult;
-
 }
 
-function toSingbox ($input) {
+// Function to convert to Sing-box format
+function toSingbox($input)
+{
     $configType = detect_type($input);
     $functionsArray = [
         "vmess" => "vmessToSingbox",
@@ -332,15 +340,16 @@ function toSingbox ($input) {
         "hy2" => "hy2ToSingbox",
         "ss" => "ssToSingbox",
     ];
-    if (array_key_exists($configType, $functionsArray)) {
-        return $functionsArray[$configType]($input);
-    }
-    return null;
+
+    return array_key_exists($configType, $functionsArray) ? $functionsArray[$configType]($input) : null;
 }
 
-function processConvertion ($base64ConfigsList, $configsName = "Created By YeBeKhe") {
+// Function to process conversion
+function processConvertion($base64ConfigsList, $configsName = "Created By YeBeKhe")
+{
     $configsArray = explode("\n", base64_decode($base64ConfigsList));
     $structure = json_decode(file_get_contents('structure.json'), true);
+
     foreach ($configsArray as $config) {
         $toSingbox = toSingbox($config);
         if (!is_null($toSingbox)) {
@@ -349,6 +358,7 @@ function processConvertion ($base64ConfigsList, $configsName = "Created By YeBeK
             $structure['outbounds'][1]['outbounds'][] = $toSingbox['tag'];
         }
     }
+
     $headerText = "//profile-title: base64:" . base64_encode($configsName) . "
 //profile-update-interval: 1
 //subscription-userinfo: upload=0; download=0; total=10737418240000000; expire=2546249531
@@ -356,9 +366,11 @@ function processConvertion ($base64ConfigsList, $configsName = "Created By YeBeK
 //profile-web-page-url: https://github.com/imyebekhe/TCR/
 
 ";
+
     return $headerText . json_encode($structure, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 }
 
+// Directory of files to process
 $directoryOfFiles = [
     "subscriptions/xray/base64/mix",
     "subscriptions/xray/base64/vmess",
@@ -369,6 +381,7 @@ $directoryOfFiles = [
     "subscriptions/xray/base64/ss",
 ];
 
+// Process each file
 foreach ($directoryOfFiles as $directory) {
     $configsName = "TCR | " . explode("/", $directory)[3];
     $configsData = file_get_contents($directory);
