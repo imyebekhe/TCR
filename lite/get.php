@@ -76,7 +76,7 @@ foreach ($configsList as $source => $configs) {
     echo "\n$tempSource/$totalSources\n";
 
     // Loop through each config in the configs array
-    $limitKey = max(0, count($configs) - 40);
+    $limitKey = max(0, count($configs) - 2);
     $tempCounter = 1;
     foreach (array_reverse($configs) as $key => $config) {
 
