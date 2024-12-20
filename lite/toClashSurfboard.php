@@ -2,51 +2,52 @@
 // Enable error reporting
 ini_set("display_errors", 1);
 ini_set("display_startup_errors", 1);
-error_reporting(E_ERROR | E_PARSE);
+error_reporting(E_ALL);
 
 // Include the functions file
 require "functions.php";
+
+// Function to process WebSocket path
 function processWsPath($input)
 {
     if (strpos($input, "/") === 0) {
         $input = substr($input, 1);
     }
-    $max_early_data = 0;
-    if (strpos($input, "?ed=2048") !== false) {
-        $input = str_replace("?ed=2048", "", $input);
-        $max_early_data = 2048;
-    }
-    $output = [
+    $max_early_data = strpos($input, "?ed=2048") !== false ? 2048 : 0;
+    $input = str_replace("?ed=2048", "", $input);
+
+    return [
         "path" => "/" . $input,
         "max_early_data" => $max_early_data,
     ];
-
-    return $output;
 }
+
+// Function to get cipher
 function getCipher($decodedConfig)
 {
-    return isset($decodedConfig["scy"]) ? $decodedConfig["scy"] : "auto";
+    return $decodedConfig["scy"] ?? "auto";
 }
 
+// Function to get UUID
 function getUUID($decodedConfig)
 {
-    if (is_valid_uuid($decodedConfig["id"]) === false) {
-        return null;
-    }
-    return str_replace(" ", "+", $decodedConfig["id"]);
+    return is_valid_uuid($decodedConfig["id"]) ? str_replace(" ", "+", $decodedConfig["id"]) : null;
 }
 
+// Function to check VMess TLS
 function getVMessTLS($decodedConfig)
 {
-    return $decodedConfig["tls"] === "tls" ? true : false;
+    return $decodedConfig["tls"] === "tls";
 }
 
+// Function to convert VMess to Clash format
 function vmessToClash($input)
 {
     $decodedConfig = configParse($input);
     if (is_null(getUUID($decodedConfig))) {
         return null;
     }
+
     $vmessTemplate = [
         "name" => urldecode($decodedConfig["ps"]),
         "type" => "vmess",
@@ -61,17 +62,16 @@ function vmessToClash($input)
     ];
 
     if ($vmessTemplate["network"] === "ws") {
+        $wsPath = processWsPath($decodedConfig["path"]);
         $vmessTemplate["ws-opts"] = [
-            "path" => processWsPath($decodedConfig["path"])["path"],
+            "path" => $wsPath["path"],
             "headers" => [
                 "host" => $decodedConfig["host"] ?? $decodedConfig["add"],
             ],
         ];
     } elseif ($vmessTemplate["network"] === "grpc") {
-        $servicename = htmlentities($decodedConfig["path"], ENT_QUOTES);
         $vmessTemplate["grpc-opts"] = [
-            "grpc-service-name" => $servicename,
-            "grpc-mode" => $decodedConfig["type"],
+            "grpc-service-name" => htmlentities($decodedConfig["path"], ENT_QUOTES),
         ];
         $vmessTemplate["tls"] = true;
     }
@@ -79,18 +79,20 @@ function vmessToClash($input)
     return "  - " . json_encode($vmessTemplate, JSON_UNESCAPED_UNICODE);
 }
 
+// Function to convert VMess to Surfboard format
 function vmessToSurfboard($input)
 {
     $decodedConfig = configParse($input);
     if (is_null(getUUID($decodedConfig))) {
         return null;
     }
-    $networkType = isset($decodedConfig["net"]) ? $decodedConfig["net"] : "tcp";
-    $alterId = isset($decodedConfig["aid"]) ? $decodedConfig["aid"] : "0";
+
+    $networkType = $decodedConfig["net"] ?? "tcp";
+    $alterId = $decodedConfig["aid"] ?? "0";
     $AEAD = $alterId === "0" ? "true" : "false";
+
     if ($networkType === "ws") {
-        $vmessTemplate =
-        urldecode($decodedConfig["ps"]) .
+        return urldecode($decodedConfig["ps"]) .
             " = vmess, " .
             $decodedConfig["add"] .
             ", " .
@@ -107,9 +109,11 @@ function vmessToSurfboard($input)
             $decodedConfig["host"] .
             '", skip-cert-verify = true, tfo = false';
     }
-    return $vmessTemplate;
+
+    return null;
 }
 
+// Function to convert Trojan to Clash format
 function trojanToClash($input)
 {
     $decodedConfig = configParse($input);
@@ -120,35 +124,26 @@ function trojanToClash($input)
         "port" => $decodedConfig["port"],
         "udp" => false,
         "password" => $decodedConfig["username"],
-        "skip-cert-verify" =>
-            isset($decodedConfig["params"]["allowInsecure"]) &&
-            $decodedConfig["params"]["allowInsecure"] === "1"
-                ? true
-                : false,
+        "skip-cert-verify" => $decodedConfig["params"]["allowInsecure"] === "1",
         "network" => "tcp",
         "client-fingerprint" => "chrome",
     ];
+
     if (isset($decodedConfig["params"]["sni"])) {
         $trojanTemplate["sni"] = $decodedConfig["params"]["sni"];
     }
+
     return "  - " . json_encode($trojanTemplate, JSON_UNESCAPED_UNICODE);
 }
 
+// Function to convert Trojan to Surfboard format
 function trojanToSurfboard($input)
 {
     $decodedConfig = configParse($input);
-    $skipCertVerify =
-        isset($decodedConfig["params"]["allowInsecure"]) &&
-        $decodedConfig["params"]["allowInsecure"] === "1"
-            ? "true"
-            : "false";
-    if (isset($decodedConfig["params"]["sni"])) {
-        $trojanSni = ", sni = " . $decodedConfig["params"]["sni"];
-    } else {
-        $trojanSni = "";
-    }
-    $trojanTemplate =
-    urldecode($decodedConfig["hash"]) .
+    $skipCertVerify = $decodedConfig["params"]["allowInsecure"] === "1" ? "true" : "false";
+    $trojanSni = isset($decodedConfig["params"]["sni"]) ? ", sni = " . $decodedConfig["params"]["sni"] : "";
+
+    return urldecode($decodedConfig["hash"]) .
         " = trojan, " .
         $decodedConfig["hostname"] .
         ", " .
@@ -159,50 +154,45 @@ function trojanToSurfboard($input)
         $skipCertVerify .
         $trojanSni .
         ", ws = false";
-
-    return $trojanTemplate;
 }
 
+// Function to convert Shadowsocks to Clash format
 function ssToClash($input)
 {
     $decodedConfig = configParse($input);
     if (!is_string($decodedConfig["password"])) {
         return null;
     }
-    $encryptionMethodes = [
-        "chacha20-ietf-poly1305",
-        "aes-256-gcm"
-    ];
-    if (!in_array($decodedConfig["encryption_method"], $encryptionMethodes)) {
+
+    $encryptionMethods = ["chacha20-ietf-poly1305", "aes-256-gcm"];
+    if (!in_array($decodedConfig["encryption_method"], $encryptionMethods)) {
         return null;
     }
 
-    $shadowsocksTemplate = [
+    return "  - " . json_encode([
         "name" => urldecode($decodedConfig["name"]),
         "type" => "ss",
         "server" => $decodedConfig["server_address"],
         "port" => $decodedConfig["server_port"],
         "password" => $decodedConfig["password"],
         "cipher" => $decodedConfig["encryption_method"],
-    ];
-    return "  - " . json_encode($shadowsocksTemplate, JSON_UNESCAPED_UNICODE);
+    ], JSON_UNESCAPED_UNICODE);
 }
 
+// Function to convert Shadowsocks to Surfboard format
 function ssToSurfboard($input)
 {
     $decodedConfig = configParse($input);
     if ($decodedConfig["encryption_method"] === "2022-blake3-aes-256-gcm") {
         return null;
     }
-    $encryptionMethodes = [
-        "chacha20-ietf-poly1305",
-        "aes-256-gcm"
-    ];
-    if (!in_array($decodedConfig["encryption_method"], $encryptionMethodes)) {
+
+    $encryptionMethods = ["chacha20-ietf-poly1305", "aes-256-gcm"];
+    if (!in_array($decodedConfig["encryption_method"], $encryptionMethods)) {
         return null;
     }
-    $shadowsocksTemplate =
-    urldecode($decodedConfig["name"]) .
+
+    return urldecode($decodedConfig["name"]) .
         " = ss, " .
         $decodedConfig["server_address"] .
         ", " .
@@ -211,46 +201,39 @@ function ssToSurfboard($input)
         $decodedConfig["encryption_method"] .
         ", password = " .
         $decodedConfig["password"];
-    return $shadowsocksTemplate;
 }
 
+// Function to validate UUID
 function is_valid_uuid($uuid_string)
 {
-    $pattern =
-        '/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-5][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$/i';
-    return (bool) preg_match($pattern, $uuid_string);
+    return (bool) preg_match('/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-5][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$/i', $uuid_string);
 }
 
+// Function to get port
 function getPort($decodedConfig)
 {
-    return isset($decodedConfig["port"]) && $decodedConfig["port"] !== ""
-        ? $decodedConfig["port"]
-        : 443;
+    return $decodedConfig["port"] ?? 443;
 }
 
+// Function to get TLS
 function getTls($decodedConfig)
 {
-    return isset($decodedConfig["params"]["security"]) &&
-        $decodedConfig["params"]["security"] === "tls"
-        ? true
-        : false;
+    return $decodedConfig["params"]["security"] === "tls";
 }
 
+// Function to get network type
 function getNetwork($decodedConfig)
 {
-    return isset($decodedConfig["params"]["type"])
-        ? $decodedConfig["params"]["type"]
-        : "tcp";
+    return $decodedConfig["params"]["type"] ?? "tcp";
 }
 
+// Function to get username
 function getUsername($decodedConfig)
 {
-    if (is_valid_uuid($decodedConfig["username"]) === false) {
-        return null;
-    }
-    return $decodedConfig["username"];
+    return is_valid_uuid($decodedConfig["username"]) ? $decodedConfig["username"] : null;
 }
 
+// Function to convert VLESS to Meta format
 function vlessToMeta($input)
 {
     $decodedConfig = configParse($input);
@@ -269,75 +252,62 @@ function vlessToMeta($input)
         "network" => getNetwork($decodedConfig),
         "client-fingerprint" => "chrome",
     ];
+
     if (isset($decodedConfig["params"]["sni"])) {
         $vlessTemplate["servername"] = $decodedConfig["params"]["sni"];
     }
+
     if (isset($decodedConfig["params"]["flow"])) {
         $vlessTemplate["flow"] = "xtls-rprx-vision";
     }
+
     if ($vlessTemplate["network"] === "ws") {
-        $path = isset($decodedConfig["params"]["path"])
-            ? htmlentities($decodedConfig["params"]["path"], ENT_QUOTES)
-            : "/";
+        $path = $decodedConfig["params"]["path"] ?? "/";
         $vlessTemplate["ws-opts"] = [
-            "path" => $path,
+            "path" => htmlentities($path, ENT_QUOTES),
         ];
         if (isset($decodedConfig["params"]["host"])) {
             $vlessTemplate["ws-opts"]["headers"] = [
                 "host" => $decodedConfig["params"]["host"],
             ];
         }
-    } elseif (
-        $vlessTemplate["network"] === "grpc" &&
-        isset($decodedConfig["params"]["serviceName"])
-    ) {
+    } elseif ($vlessTemplate["network"] === "grpc" && isset($decodedConfig["params"]["serviceName"])) {
         $vlessTemplate["grpc-opts"] = [
             "grpc-service-name" => $decodedConfig["params"]["serviceName"],
         ];
         $vlessTemplate["tls"] = true;
     }
-    if (
-        !is_null($decodedConfig["params"]["security"]) &&
-        $decodedConfig["params"]["security"] === "reality"
-    ) {
+
+    if ($decodedConfig["params"]["security"] === "reality") {
         $vlessTemplate["udp"] = true;
         $vlessTemplate["tls"] = true;
         $vlessTemplate["client-fingerprint"] = $decodedConfig["params"]["fp"];
+
         $contaminatedFp = ["android", "ios", "random"];
-        if (
-            in_array(
-                strtolower($decodedConfig["params"]["fp"]),
-                $contaminatedFp
-            )
-        ) {
+        if (in_array(strtolower($decodedConfig["params"]["fp"]), $contaminatedFp)) {
             return null;
         }
+
         $vlessTemplate["reality-opts"] = [
             "public-key" => $decodedConfig["params"]["pbk"],
         ];
-        if (
-            !is_null($decodedConfig["params"]["sid"]) &&
-            $decodedConfig["params"]["sid"] !== ""
-        ) {
-            $vlessTemplate["reality-opts"]["short-id"] =
-                $decodedConfig["params"]["sid"];
+
+        if (!empty($decodedConfig["params"]["sid"])) {
+            $vlessTemplate["reality-opts"]["short-id"] = $decodedConfig["params"]["sid"];
         }
     }
+
     return "  - " . json_encode($vlessTemplate, JSON_UNESCAPED_UNICODE);
 }
 
+// Function to convert to Clash or Surfboard format
 function toClashSurfboard($input, $outboundType)
 {
     $configType = detect_type($input);
-    if (
-        $configType === "vless" &&
-        in_array($outboundType, ["clash", "surfboard"])
-    ) {
+    if ($configType === "vless" && in_array($outboundType, ["clash", "surfboard"])) {
         return null;
     }
-    if (!in_array($configType, ["vmess", "vless", "trojan", "ss"])) {
-        return null;
-    }
+
     $functionsArray = [
         "vmess" => [
             "clash" => "vmessToClash",
@@ -358,10 +328,11 @@ function toClashSurfboard($input, $outboundType)
             "surfboard" => "ssToSurfboard",
         ],
     ];
-    
+
     return $functionsArray[$configType][$outboundType]($input);
 }
 
+// Function to generate config header
 function configsHeader($outboundType, $surfboardUrl = "")
 {
     return [
@@ -624,6 +595,7 @@ function configsHeader($outboundType, $surfboardUrl = "")
     ][$outboundType];
 }
 
+// Function to generate proxy groups
 function configsProxyGroup($outboundType)
 {
     return [
@@ -689,6 +661,7 @@ function configsProxyGroup($outboundType)
     ][$outboundType];
 }
 
+// Function to generate proxy rules
 function configsProxyRules($outboundType)
 {
     return [
@@ -749,23 +722,22 @@ function configsProxyRules($outboundType)
     ][$outboundType];
 }
 
+// Function to reprocess input
 function reprocess($input)
 {
     $input = str_replace("  - ", "", $input);
     $proxies_array = explode("\n", $input);
+    $output = [];
     foreach ($proxies_array as $proxy_json) {
         $proxy_array = json_decode($proxy_json, true);
-
-        $output[] =
-            "  - " .
-            json_encode(
-                $proxy_array,
-                JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
-            );
+        if ($proxy_array) {
+            $output[] = "  - " . json_encode($proxy_array, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        }
     }
     return str_replace("  - null", "", implode("\n", $output));
 }
 
+// Function to generate full config
 function fullConfigGenerator(
     $configsHeader,
     $proxies,
@@ -821,6 +793,7 @@ function fullConfigGenerator(
     return $output;
 }
 
+// Function to extract names
 function extractNames($input, $outputType)
 {
     $configsArray = explode("\n", $input);
@@ -843,6 +816,7 @@ function extractNames($input, $outputType)
     return $configsName;
 }
 
+// Function to process conversion
 function processConvertion($base64ConfigsList, $outboundType, $surfboardUrl = '')
 {
     $configsArray = explode("\n", base64_decode($base64ConfigsList));
@@ -869,6 +843,7 @@ function processConvertion($base64ConfigsList, $outboundType, $surfboardUrl = ''
     return $fullConfig;
 }
 
+// Directory of files to process
 $directoryOfFiles = [
     "subscriptions/xray/base64/mix",
     "subscriptions/xray/base64/vmess",
@@ -878,6 +853,7 @@ $directoryOfFiles = [
     "subscriptions/xray/base64/ss",
 ];
 
+// Process each file
 foreach ($directoryOfFiles as $directory) {
     $configsData = file_get_contents($directory);
     $outputTypes = [
@@ -888,7 +864,7 @@ foreach ($directoryOfFiles as $directory) {
     $configsType = explode("/", $directory)[3];
     foreach ($outputTypes as $outputType => $configsTypeArray) {
         if (in_array($configsType, $configsTypeArray)) {
-            $surfboardUrl = $outboundType === "surfboard" ? 'https://raw.githubusercontent.com/yebekhe/TVC/main/subscriptions/surfboard/' . $configsType : "";
+            $surfboardUrl = $outboundType === "surfboard" ? 'https://raw.githubusercontent.com/imyebekhe/TCR/main/subscriptions/surfboard/' . $configsType : "";
             file_put_contents(
                 "subscriptions/" .
                     $outputType .
