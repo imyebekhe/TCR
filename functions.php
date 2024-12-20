@@ -241,7 +241,7 @@ function configParse($input)
             "params" => $params,
             "hash" => isset($parsedUrl["fragment"])
                 ? $parsedUrl["fragment"]
-                : "TVC" . getRandomName(),
+                : "TCR" . getRandomName(),
         ];
 
         if ($configType === "tuic") {
@@ -261,7 +261,7 @@ function configParse($input)
         );
         $server_address = $url["host"];
         $server_port = $url["port"];
-        $name = isset($url["fragment"]) ? urldecode($url["fragment"]) : "TVC" . getRandomName();
+        $name = isset($url["fragment"]) ? urldecode($url["fragment"]) : "TCR" . getRandomName();
         $server = [
             "encryption_method" => $encryption_method,
             "password" => $password,
@@ -398,8 +398,8 @@ function hiddifyHeader ($subscriptionName) {
     return "#profile-title: base64:" . base64_encode($subscriptionName) . "
 #profile-update-interval: 1
 #subscription-userinfo: upload=0; download=0; total=10737418240000000; expire=2546249531
-#support-url: https://t.me/v2raycollector
-#profile-web-page-url: https://github.com/yebekhe/TelegramV2rayCollector
+#support-url: https://t.me/TServiceTheChannell
+#profile-web-page-url: https://github.com/imyebekhe/TCR
 
 ";
 }
